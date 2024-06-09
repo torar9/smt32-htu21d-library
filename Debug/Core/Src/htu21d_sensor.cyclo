@@ -1,0 +1,6 @@
+../Core/Src/htu21d_sensor.c:25:16:checkCRC8	3
+../Core/Src/htu21d_sensor.c:35:9:HTU21D_read_registers	1
+../Core/Src/htu21d_sensor.c:48:9:HTU21D_init	1
+../Core/Src/htu21d_sensor.c:58:9:HTU21D_setResolution	1
+../Core/Src/htu21d_sensor.c:69:9:HTU21D_readHumidity	2
+../Core/Src/htu21d_sensor.c:92:9:HTU21D_readTemperature	2
