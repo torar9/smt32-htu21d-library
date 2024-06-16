@@ -13,6 +13,7 @@
 
 /* --- Configurable macros --- */
 
+/* extern reference to I2C - CHANGE BEFORE USAGE */
 extern I2C_HandleTypeDef hi2c1;
 
 /**
