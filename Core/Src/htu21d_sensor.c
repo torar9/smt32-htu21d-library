@@ -1,26 +1,16 @@
 #include <htu21d_sensor.h>
 
-#define HTU21D_ADDRESS (0x40 << 1)
+#define HTU21D_ADDRESS (0x40)
+#define HTU21D_ADDRESS_READ ((HTU21D_ADDRESS << 1) + 1U)
+#define HTU21D_ADDRESS_WRITE (HTU21D_ADDRESS << 1)
 #define HTU21D_COMMAND_TRIG_TEMP_MEAS (0xe3)
 #define HTU21D_COMMAND_TRIG_HUM_MEAS (0xe5)
 #define HTU21D_COMMAND_WRITE_REG (0xE6)
 #define HTU21D_COMMAND_READ_REG (0xE7)
 #define HTU21D_COMMAND_RESET (0xFE)
-#define HTU21D_DELAY (50)
-#define HTU21D_MEAS_DELAY (50)
-#define HTU21D_TIMEOUT (250)
-#define HTU21D_CRC8_POLY      0x13100
+#define HTU21D_CRC8_POLY (0x13100)
 
-typedef enum
-{
-	HTU21D_MASK_OTP = 0x02,
-	HTU21D_MASK_HEAT = 0x04,
-	HTU21D_MASK_RESERVED = 0x38,
-	HTU21D_MASK_BAT = 0x40,
-	HTU21D_MASK_RESOLUTION = 0x81
-} HTU21D_REG_MASK;
-
-uint8_t HT21UD_registers = 0;
+static uint8_t HT21UD_registers = 0U;
 
 static uint8_t checkCRC8(uint16_t data)
 {
@@ -32,83 +22,163 @@ static uint8_t checkCRC8(uint16_t data)
   return data >>= 8;
 }
 
-uint8_t HTU21D_read_registers()
+/**
+  * @brief  Resets HTU21D
+  * @retval HTU21D_STATUS
+  */
+HTU21D_STATUS HTU21D_reset()
 {
-	HAL_StatusTypeDef status = 0;
-	uint8_t buffer[1] = {HTU21D_COMMAND_READ_REG};
+	HAL_StatusTypeDef comStatus = HAL_OK;
+	HTU21D_STATUS result = HTU21D_OK;
+	uint8_t buffer[1] = {HTU21D_COMMAND_RESET};
 
-	status |= HAL_I2C_Master_Transmit(&hi2c1, (HTU21D_ADDRESS), buffer, 1, HTU21D_TIMEOUT);
-	status |= HAL_I2C_Master_Receive(&hi2c1, (HTU21D_ADDRESS + 1), buffer, 1, HTU21D_TIMEOUT);
-
-	HT21UD_registers = buffer[0];
-
-	return (status == 0);
-}
-
-uint8_t HTU21D_init()
-{
-	uint8_t result = 0;
-
-	result = HTU21D_read_registers();
+	comStatus |= HAL_I2C_Master_Transmit(&hi2c1, HTU21D_ADDRESS_WRITE, buffer, 1, HTU21D_TIMEOUT);
 
 	return result;
 }
 
-uint8_t HTU21D_setResolution(HTU21D_RESOLUTION resolution)
+HTU21D_STATUS HTU21D_readRegisters()
 {
-	HAL_StatusTypeDef status = HAL_ERROR;
+	HAL_StatusTypeDef comStatus = HAL_OK;
+	HTU21D_STATUS result = HTU21D_OK;
+	uint8_t buffer[1] = {HTU21D_COMMAND_READ_REG};
+
+	comStatus |= HAL_I2C_Master_Transmit(&hi2c1, HTU21D_ADDRESS_WRITE, buffer, 1, HTU21D_TIMEOUT);
+	comStatus |= HAL_I2C_Master_Receive(&hi2c1, HTU21D_ADDRESS_READ, buffer, 1, HTU21D_TIMEOUT);
+
+	HT21UD_registers = buffer[0];
+
+	if(HAL_OK != comStatus)
+	{
+		result |= HTU21D_COM_FAIL;
+	}
+
+	return result;
+}
+
+/**
+  * @brief  Initialize HTU21D - reads register
+  * @retval HTU21D_STATUS
+  */
+HTU21D_STATUS HTU21D_init()
+{
+	HTU21D_STATUS result = HTU21D_OK;
+
+	result |= HTU21D_readRegisters();
+
+	return result;
+}
+
+/**
+  * @brief  Initialize HTU21D - sets resolution of HTU21D measurement
+  * @param  resolution - resolution for humidity and temperature
+  * @retval HTU21D_STATUS
+  */
+HTU21D_STATUS HTU21D_setResolution(HTU21D_RESOLUTION resolution)
+{
+	HAL_StatusTypeDef comStatus = HAL_ERROR;
+	HTU21D_STATUS result = HTU21D_OK;
 	uint8_t buffer[2] = {HTU21D_COMMAND_WRITE_REG, 0};
 
 	buffer[1] = resolution;
-	status = HAL_I2C_Master_Transmit(&hi2c1, (HTU21D_ADDRESS), buffer, 2, HTU21D_TIMEOUT);
+	comStatus = HAL_I2C_Master_Transmit(&hi2c1, HTU21D_ADDRESS_WRITE, buffer, 2, HTU21D_TIMEOUT);
 
-	return (HAL_OK == status);
+	if(HAL_OK != comStatus)
+	{
+		result = HTU21D_COM_FAIL;
+	}
+
+	return result;
 }
 
-uint8_t HTU21D_readHumidity(double *hum)
+/**
+  * @brief  Initialize HTU21D - starts reading of humidity
+  * @param  resolution - return parameter of measured humidity
+  * @retval HTU21D_STATUS - return result of HTU21D reading
+  */
+HTU21D_STATUS HTU21D_readHumidity(double *hum)
 {
-	HAL_StatusTypeDef status = HAL_OK;
+	HAL_StatusTypeDef comStatus = HAL_OK;
+	HTU21D_STATUS result = HTU21D_OK;
 	uint16_t tmp = 0;
 	uint8_t buffer[3] = {HTU21D_COMMAND_TRIG_HUM_MEAS, 0, 0};
 
-	status |= HAL_I2C_Master_Transmit(&hi2c1, (HTU21D_ADDRESS), buffer, 1, HTU21D_TIMEOUT);
-	status |= HAL_I2C_Master_Receive(&hi2c1, (HTU21D_ADDRESS + 1), buffer, 4, HTU21D_TIMEOUT);
+	comStatus |= HAL_I2C_Master_Transmit(&hi2c1, HTU21D_ADDRESS_WRITE, buffer, 1, HTU21D_TIMEOUT);
+	comStatus |= HAL_I2C_Master_Receive(&hi2c1, HTU21D_ADDRESS_READ, buffer, 4, HTU21D_TIMEOUT);
 
-	tmp = (((uint16_t)buffer[0] << 8) | ((uint16_t)buffer[1]));
-
-	/* Check CRC */
-	if(buffer[2] == checkCRC8(tmp))
+	if(HAL_OK != comStatus)
 	{
-		*hum = ((-6.0) + (125 * (tmp/(double)(65536)))); /* Convert unsigned value to double according to datasheet */
-	}
-	else
-	{
-		status = 1;
+		result |= HTU21D_COM_FAIL;
 	}
 
-	return (HAL_OK == status);
+	/* Transmit OK? */
+	if(HTU21D_OK == result)
+	{
+		tmp = (((uint16_t)buffer[0] << 8) | ((uint16_t)buffer[1]));
+		/* Check CRC */
+		if(buffer[2] == checkCRC8(tmp))
+		{
+			*hum = ((-6.0) + (125 * (tmp/(double)(65536)))); /* Convert unsigned value to double according to datasheet */
+		}
+		else
+		{
+			result |= HTU21D_CRC_FAIL;
+		}
+	}
+
+	return result;
 }
 
-uint8_t HTU21D_readTemperature(double *temp)
+/**
+  * @brief  Initialize HTU21D - starts reading of temperature
+  * @param  resolution - return parameter of measured temperature
+  * @retval HTU21D_STATUS - return result of HTU21D reading
+  */
+HTU21D_STATUS HTU21D_readTemperature(double *temp)
 {
-	HAL_StatusTypeDef status = HAL_OK;
+	HAL_StatusTypeDef comStatus = HAL_OK;
+	HTU21D_STATUS result = HTU21D_OK;
 	uint16_t tmp = 0;
 	uint8_t buffer[3] = {HTU21D_COMMAND_TRIG_TEMP_MEAS, 0, 0};
 
-	status |= HAL_I2C_Master_Transmit(&hi2c1, (HTU21D_ADDRESS), buffer, 1, HTU21D_TIMEOUT);
-	status |= HAL_I2C_Master_Receive(&hi2c1, (HTU21D_ADDRESS + 1), buffer, 3, HTU21D_TIMEOUT);
+	comStatus |= HAL_I2C_Master_Transmit(&hi2c1, HTU21D_ADDRESS_WRITE, buffer, 1, HTU21D_TIMEOUT);
+	comStatus |= HAL_I2C_Master_Receive(&hi2c1, HTU21D_ADDRESS_READ, buffer, 3, HTU21D_TIMEOUT);
 
-	tmp = (((uint16_t)buffer[0] << 8) | ((uint16_t)buffer[1]));
-
-	/* Check CRC */
-	if(buffer[2] == checkCRC8(tmp))
+	if(HAL_OK != comStatus)
 	{
-		*temp = ((-46.85) + (175.72 * (tmp/(double)(65536)))); /* Convert unsigned value to double according to datasheet */
-	}
-	else
-	{
-		status = 1;
+		result |= HTU21D_COM_FAIL;
 	}
 
-	return (HAL_OK == status);
+	/* Transmit OK? */
+	if(HTU21D_OK == result)
+	{
+		tmp = (((uint16_t)buffer[0] << 8) | ((uint16_t)buffer[1]));
+		/* Check CRC */
+		if(buffer[2] == checkCRC8(tmp))
+		{
+			*temp = ((-46.85) + (175.72 * (tmp/(double)(65536)))); /* Convert unsigned value to double according to datasheet */
+		}
+		else
+		{
+			result |= HTU21D_CRC_FAIL;
+		}
+	}
+
+	return result;
+}
+
+/**
+  * @brief  Initialize HTU21D - reads registers from HTU21D
+  * @param  resolution - return parameter of register readings
+  * @retval HTU21D_STATUS - return result of HTU21D reading
+  */
+HTU21D_STATUS HTU21D_getRegisters(uint8_t *regSatus)
+{
+	HTU21D_STATUS result = HTU21D_OK;
+
+	*regSatus = HT21UD_registers;
+
+	result |= HTU21D_readRegisters();
+
+	return result;
 }

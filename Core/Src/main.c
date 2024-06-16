@@ -31,7 +31,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define LED_DELAY (500)
+#define LED_DELAY (50)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -99,10 +99,12 @@ int main(void)
   uint32_t now = 0U;
   double temp = 0.0;
   double hum = 0.0;
+  HTU21D_STATUS htuStatus = HTU21D_OK;
   GPIO_PinState pinTest = 0U;
+  uint8_t htu21dReg = 0U;
 
   HAL_Delay(50);
-  if(!HTU21D_init(&hi2c1))
+  if(HTU21D_OK != HTU21D_init(&hi2c1))
   {
 	  NVIC_SystemReset();
   }
@@ -129,10 +131,26 @@ int main(void)
 		  HAL_Delay(200);
 	  }
 
-	  /* Read humidity */
-	 (void)HTU21D_readHumidity(&hum);
-	 /* Read temperature */
-	 (void)HTU21D_readTemperature(&temp);
+	  /* Get registers */
+	  htuStatus |= HTU21D_getRegisters(&htu21dReg);
+
+	  /* Check if bat status is clear */
+	  if((htu21dReg & HTU21D_MASK_BAT) == 0U)
+	  {
+		  /* Read humidity */
+		  htuStatus |= HTU21D_readHumidity(&hum);
+		  /* Read temperature */
+		  htuStatus |= HTU21D_readTemperature(&temp);
+	  }
+
+	 if(htuStatus != HTU21D_OK)
+	 {
+		 /* Error occured */
+		 while(1)
+		 {
+			 HAL_GPIO_WritePin(LED_OUTPUT_GPIO_Port, LED_OUTPUT_Pin, GPIO_PIN_SET);
+		 }
+	 }
 
 	  //HAL_IWDG_Refresh(&hiwdg);
   }
