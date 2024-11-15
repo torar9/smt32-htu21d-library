@@ -11,10 +11,29 @@
   */
 #define HTU21D_TIMEOUT (100)
 
+/**
+  * @brief Maximum possible humidity
+  */
+#define HTU21D_MAX_HUM (100)
+
+/**
+  * @brief Minimum possible humidity
+  */
+#define HTU21D_MIN_HUM (0)
+
+/**
+  * @brief Maximum possible temperature
+  */
+#define HTU21D_MAX_TEMP (125)
+
+/**
+  * @brief Minimum possible temperature
+  */
+#define HTU21D_MIN_TEMP (-40)
+
 /* --- Configurable macros --- */
 
 /* extern reference to I2C - CHANGE BEFORE USAGE */
-extern I2C_HandleTypeDef hi2c1;
 
 /**
   * @brief Resolution option for HTU21D
@@ -34,8 +53,14 @@ typedef enum
 {
 	HTU21D_OK = 0, /* No error detected */
 	HTU21D_COM_FAIL = 1, /* Communication error */
-	HTU21D_CRC_FAIL = 2 /* CRC check failed, data corrupted */
-} HTU21D_STATUS;
+	HTU21D_CRC_FAIL = 2, /* CRC check failed, data corrupted */
+	HTU21D_SATURATED = 4 /* Sensor raw values are below or above thresholds - readings are saturated */
+} HTU21D_ERR_TYPE;
+
+/**
+  * @brief Return type of HTU21D status
+  */
+typedef uint8_t HTU21D_STATUS;
 
 /**
   * @brief List of masks for each register - see datasheet for more info
@@ -59,7 +84,7 @@ HTU21D_STATUS HTU21D_reset();
   * @brief  Initialize HTU21D - reads register
   * @retval HTU21D_STATUS
   */
-HTU21D_STATUS HTU21D_init();
+HTU21D_STATUS HTU21D_init(I2C_HandleTypeDef* i2c);
 
 /**
   * @brief  Initialize HTU21D - sets resolution of HTU21D measurement
