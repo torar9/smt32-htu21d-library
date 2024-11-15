@@ -12,14 +12,16 @@
 
 static uint8_t HT21UD_registers = 0U;
 
+static I2C_HandleTypeDef* hi2c2;
+
 static uint8_t checkCRC8(uint16_t data)
 {
-  for (uint8_t bit = 0; bit < 16U; bit++)
+  for (uint8_t bit = 0; bit < 16; bit++)
   {
-    if   (data & 0x8000) data = (data << 1U) ^ HTU21D_CRC8_POLY;
-    else data <<= 1U;
+    if   (data & 0x8000) data = (data << 1) ^ HTU21D_CRC8_POLY;
+    else data <<= 1;
   }
-  return data >>= 8U;
+  return data >>= 8;
 }
 
 /**
@@ -32,7 +34,7 @@ HTU21D_STATUS HTU21D_reset()
 	HTU21D_STATUS result = HTU21D_OK;
 	uint8_t buffer[1] = {HTU21D_COMMAND_RESET};
 
-	comStatus |= HAL_I2C_Master_Transmit(&hi2c1, HTU21D_ADDRESS_WRITE, buffer, 1U, HTU21D_TIMEOUT);
+	comStatus |= HAL_I2C_Master_Transmit(hi2c2, HTU21D_ADDRESS_WRITE, buffer, 1, HTU21D_TIMEOUT);
 
 	return result;
 }
@@ -43,8 +45,8 @@ HTU21D_STATUS HTU21D_readRegisters()
 	HTU21D_STATUS result = HTU21D_OK;
 	uint8_t buffer[1] = {HTU21D_COMMAND_READ_REG};
 
-	comStatus |= HAL_I2C_Master_Transmit(&hi2c1, HTU21D_ADDRESS_WRITE, buffer, 1U, HTU21D_TIMEOUT);
-	comStatus |= HAL_I2C_Master_Receive(&hi2c1, HTU21D_ADDRESS_READ, buffer, 1U, HTU21D_TIMEOUT);
+	comStatus |= HAL_I2C_Master_Transmit(hi2c2, HTU21D_ADDRESS_WRITE, buffer, 1, HTU21D_TIMEOUT);
+	comStatus |= HAL_I2C_Master_Receive(hi2c2, HTU21D_ADDRESS_READ, buffer, 1, HTU21D_TIMEOUT);
 
 	HT21UD_registers = buffer[0];
 
@@ -60,9 +62,10 @@ HTU21D_STATUS HTU21D_readRegisters()
   * @brief  Initialize HTU21D - reads register
   * @retval HTU21D_STATUS
   */
-HTU21D_STATUS HTU21D_init()
+HTU21D_STATUS HTU21D_init(I2C_HandleTypeDef* i2c)
 {
 	HTU21D_STATUS result = HTU21D_OK;
+	hi2c2 = i2c;
 
 	result |= HTU21D_readRegisters();
 
@@ -81,7 +84,7 @@ HTU21D_STATUS HTU21D_setResolution(HTU21D_RESOLUTION resolution)
 	uint8_t buffer[2] = {HTU21D_COMMAND_WRITE_REG, 0U};
 
 	buffer[1] = resolution;
-	comStatus = HAL_I2C_Master_Transmit(&hi2c1, HTU21D_ADDRESS_WRITE, buffer, 2U, HTU21D_TIMEOUT);
+	comStatus = HAL_I2C_Master_Transmit(hi2c2, HTU21D_ADDRESS_WRITE, buffer, 2, HTU21D_TIMEOUT);
 
 	if(HAL_OK != comStatus)
 	{
@@ -100,11 +103,11 @@ HTU21D_STATUS HTU21D_readHumidity(double *hum)
 {
 	HAL_StatusTypeDef comStatus = HAL_OK;
 	HTU21D_STATUS result = HTU21D_OK;
-	uint16_t tmp = 0U;
+	static uint16_t tmp = 0;
 	uint8_t buffer[3] = {HTU21D_COMMAND_TRIG_HUM_MEAS, 0U, 0U};
 
-	comStatus |= HAL_I2C_Master_Transmit(&hi2c1, HTU21D_ADDRESS_WRITE, buffer, 1U, HTU21D_TIMEOUT);
-	comStatus |= HAL_I2C_Master_Receive(&hi2c1, HTU21D_ADDRESS_READ, buffer, 3U, HTU21D_TIMEOUT);
+	comStatus |= HAL_I2C_Master_Transmit(hi2c2, HTU21D_ADDRESS_WRITE, buffer, 1U, HTU21D_TIMEOUT);
+	comStatus |= HAL_I2C_Master_Receive(hi2c2, HTU21D_ADDRESS_READ, buffer, 3U, HTU21D_TIMEOUT);
 
 	if(HAL_OK != comStatus)
 	{
@@ -114,11 +117,23 @@ HTU21D_STATUS HTU21D_readHumidity(double *hum)
 	/* Transmit OK? */
 	if(HTU21D_OK == result)
 	{
-		tmp = (((uint16_t)buffer[0] << 8U) | ((uint16_t)buffer[1]));
+		tmp = (((uint16_t)buffer[0] << 8) | ((uint16_t)buffer[1]));
 		/* Check CRC */
 		if(buffer[2] == checkCRC8(tmp))
 		{
 			*hum = ((-6.0) + (125 * (tmp/(double)(65536)))); /* Convert unsigned value to double according to datasheet */
+
+			/* Check for maximum and minimum thresholds*/
+			if(*hum > HTU21D_MAX_HUM)
+			{
+				*hum = HTU21D_MAX_HUM;
+				result |= HTU21D_SATURATED;
+			}
+			else if(*hum < HTU21D_MIN_HUM)
+			{
+				*hum = HTU21D_MIN_HUM;
+				result |= HTU21D_SATURATED;
+			}
 		}
 		else
 		{
@@ -138,11 +153,11 @@ HTU21D_STATUS HTU21D_readTemperature(double *temp)
 {
 	HAL_StatusTypeDef comStatus = HAL_OK;
 	HTU21D_STATUS result = HTU21D_OK;
-	uint16_t tmp = 0U;
-	uint8_t buffer[3] = {HTU21D_COMMAND_TRIG_TEMP_MEAS, 0, 0};
+	uint16_t tmp = 0;
+	uint8_t buffer[3] = {HTU21D_COMMAND_TRIG_TEMP_MEAS, 0U, 0U};
 
-	comStatus |= HAL_I2C_Master_Transmit(&hi2c1, HTU21D_ADDRESS_WRITE, buffer, 1, HTU21D_TIMEOUT);
-	comStatus |= HAL_I2C_Master_Receive(&hi2c1, HTU21D_ADDRESS_READ, buffer, 3, HTU21D_TIMEOUT);
+	comStatus |= HAL_I2C_Master_Transmit(hi2c2, HTU21D_ADDRESS_WRITE, buffer, 1U, HTU21D_TIMEOUT);
+	comStatus |= HAL_I2C_Master_Receive(hi2c2, HTU21D_ADDRESS_READ, buffer, 3U, HTU21D_TIMEOUT);
 
 	if(HAL_OK != comStatus)
 	{
@@ -152,11 +167,23 @@ HTU21D_STATUS HTU21D_readTemperature(double *temp)
 	/* Transmit OK? */
 	if(HTU21D_OK == result)
 	{
-		tmp = (((uint16_t)buffer[0] << 8U) | ((uint16_t)buffer[1]));
+		tmp = (((uint16_t)buffer[0] << 8) | ((uint16_t)buffer[1]));
 		/* Check CRC */
 		if(buffer[2] == checkCRC8(tmp))
 		{
 			*temp = ((-46.85) + (175.72 * (tmp/(double)(65536)))); /* Convert unsigned value to double according to datasheet */
+
+			/* Check for maximum and minimum thresholds*/
+			if(*temp > HTU21D_MAX_TEMP)
+			{
+				*temp = HTU21D_MAX_TEMP;
+				result |= HTU21D_SATURATED;
+			}
+			else if(*temp < HTU21D_MIN_TEMP)
+			{
+				*temp = HTU21D_MIN_TEMP;
+				result |= HTU21D_SATURATED;
+			}
 		}
 		else
 		{
